@@ -3,6 +3,7 @@ import { APP_GUARD } from '@nestjs/core';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { MongooseModule } from '@nestjs/mongoose';
 import { ThrottlerGuard, ThrottlerModule, minutes } from '@nestjs/throttler';
+import { UsersModule } from './users/users.module';
 
 @Module({
   imports: [
@@ -20,6 +21,7 @@ import { ThrottlerGuard, ThrottlerModule, minutes } from '@nestjs/throttler';
         limit: 30,
       },
     ]),
+    UsersModule,
   ],
   providers: [
     {
