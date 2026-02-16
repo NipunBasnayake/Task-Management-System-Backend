@@ -5,7 +5,7 @@ import {
 } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
-import { Response, Request } from 'express';
+import { Response, Request, CookieOptions } from 'express';
 import * as bcrypt from 'bcryptjs';
 import ms, { StringValue } from 'ms';
 import { RegisterDto } from './dto/register.dto';
@@ -13,6 +13,9 @@ import { LoginDto } from './dto/login.dto';
 import { UserDocument } from '../users/schemas/user.schema';
 import { UsersService } from 'src/users/user.service';
 import { JwtPayload } from './types/jwt-payload';
+
+type SameSiteOption = 'lax' | 'strict' | 'none';
+type CookieOptionsWithPartitioned = CookieOptions & { partitioned?: boolean };
 
 @Injectable()
 export class AuthService {
@@ -166,47 +169,122 @@ export class AuthService {
   }
 
   private setAuthCookies(res: Response, accessToken: string, refreshToken: string) {
+    const baseOptions = this.baseCookieOptions();
     const accessMaxAge = this.parseTtl(this.getAccessTtl());
     const refreshMaxAge = this.parseTtl(this.getRefreshTtl());
 
-    res.cookie('access_token', accessToken, {
-      ...this.baseCookieOptions(),
+    this.setCookieWithOptions(res, 'access_token', accessToken, {
+      ...baseOptions,
       ...(accessMaxAge ? { maxAge: accessMaxAge } : {}),
     });
 
-    res.cookie('refresh_token', refreshToken, {
-      ...this.baseCookieOptions(),
+    this.setCookieWithOptions(res, 'refresh_token', refreshToken, {
+      ...baseOptions,
       ...(refreshMaxAge ? { maxAge: refreshMaxAge } : {}),
     });
   }
 
   private clearAuthCookies(res: Response) {
     const options = this.baseCookieOptions();
-    res.clearCookie('access_token', options);
-    res.clearCookie('refresh_token', options);
+    this.clearCookieWithOptions(res, 'access_token', options);
+    this.clearCookieWithOptions(res, 'refresh_token', options);
   }
 
-  private baseCookieOptions() {
-    const sameSiteEnv = this.configService.get<string>('COOKIE_SAMESITE', 'lax');
-    const secureEnv = this.configService.get<string>('COOKIE_SECURE', 'false');
+  private baseCookieOptions(): CookieOptionsWithPartitioned {
+    const sameSiteEnv = (
+      this.configService.get<string>('COOKIE_SAMESITE', 'lax') || 'lax'
+    ).toLowerCase();
+    const secureEnv = this.isCookieSecure();
+    const partitionedEnv = this.isCookiePartitioned();
 
-    const sameSite =
+    const sameSite: SameSiteOption =
       sameSiteEnv === 'none'
         ? 'none'
         : sameSiteEnv === 'strict'
           ? 'strict'
           : 'lax';
 
+    const effectiveSameSite: SameSiteOption = partitionedEnv ? 'none' : sameSite;
+    const effectiveSecure =
+      partitionedEnv || effectiveSameSite === 'none' ? true : secureEnv;
+
     return {
       httpOnly: true,
-      sameSite: sameSite as 'lax' | 'strict' | 'none',
-      secure: secureEnv === 'true',
+      sameSite: effectiveSameSite,
+      secure: effectiveSecure,
       path: '/',
+      ...(partitionedEnv ? { partitioned: true } : {}),
     };
   }
 
+  private setCookieWithOptions(
+    res: Response,
+    name: string,
+    value: string,
+    options: CookieOptionsWithPartitioned,
+  ) {
+    res.cookie(name, value, options);
+    this.ensurePartitionedAttribute(res, name, options);
+  }
+
+  private clearCookieWithOptions(
+    res: Response,
+    name: string,
+    options: CookieOptionsWithPartitioned,
+  ) {
+    res.clearCookie(name, options);
+    this.ensurePartitionedAttribute(res, name, options);
+  }
+
+  private ensurePartitionedAttribute(
+    res: Response,
+    name: string,
+    options: CookieOptionsWithPartitioned,
+  ) {
+    if (!options.partitioned) {
+      return;
+    }
+
+    const header = res.getHeader('Set-Cookie');
+    if (!header) {
+      return;
+    }
+
+    const cookies = Array.isArray(header) ? [...header] : [String(header)];
+    const prefix = `${name}=`;
+    let updated = false;
+
+    for (let i = 0; i < cookies.length; i += 1) {
+      const cookie = cookies[i];
+      if (!cookie.startsWith(prefix)) {
+        continue;
+      }
+      if (/;\s*Partitioned\b/i.test(cookie)) {
+        continue;
+      }
+      cookies[i] = `${cookie}; Partitioned`;
+      updated = true;
+    }
+
+    if (updated) {
+      res.setHeader('Set-Cookie', cookies);
+    }
+  }
+
   private isCookieSecure() {
-    return this.configService.get<string>('COOKIE_SECURE', 'false') === 'true';
+    return this.getEnvBoolean('COOKIE_SECURE', false);
+  }
+
+  private isCookiePartitioned() {
+    return this.getEnvBoolean('COOKIE_PARTITIONED', false);
+  }
+
+  private getEnvBoolean(key: string, defaultValue: boolean) {
+    const raw = this.configService.get<string>(key);
+    if (raw === undefined || raw === null || raw.trim() === '') {
+      return defaultValue;
+    }
+    return raw.trim().toLowerCase() === 'true';
   }
 
   private getAccessTtl(): StringValue {
