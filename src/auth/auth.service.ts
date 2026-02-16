@@ -22,7 +22,7 @@ export class AuthService {
     private readonly usersService: UsersService,
     private readonly jwtService: JwtService,
     private readonly configService: ConfigService,
-  ) {}
+  ) { }
 
   async register(dto: RegisterDto) {
     const email = dto.email.trim().toLowerCase();
@@ -187,10 +187,20 @@ export class AuthService {
   }
 
   private baseCookieOptions() {
+    const sameSiteEnv = this.configService.get<string>('COOKIE_SAMESITE', 'lax');
+    const secureEnv = this.configService.get<string>('COOKIE_SECURE', 'false');
+
+    const sameSite =
+      sameSiteEnv === 'none'
+        ? 'none'
+        : sameSiteEnv === 'strict'
+          ? 'strict'
+          : 'lax';
+
     return {
       httpOnly: true,
-      sameSite: 'lax' as const,
-      secure: this.isCookieSecure(),
+      sameSite: sameSite as 'lax' | 'strict' | 'none',
+      secure: secureEnv === 'true',
       path: '/',
     };
   }
