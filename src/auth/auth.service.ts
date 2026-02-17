@@ -191,22 +191,33 @@ export class AuthService {
   }
 
   private baseCookieOptions(): CookieOptionsWithPartitioned {
-    const sameSiteEnv = (
-      this.configService.get<string>('COOKIE_SAMESITE', 'lax') || 'lax'
-    ).toLowerCase();
-    const secureEnv = this.isCookieSecure();
+    const nodeEnv = this.configService.get<string>('NODE_ENV', 'development');
+    const isProduction = nodeEnv === 'production';
+
+    const sameSiteEnv = this.configService.get<string>('COOKIE_SAMESITE');
+    const secureEnv = this.configService.get<string>('COOKIE_SECURE');
     const partitionedEnv = this.isCookiePartitioned();
 
-    const sameSite: SameSiteOption =
-      sameSiteEnv === 'none'
-        ? 'none'
-        : sameSiteEnv === 'strict'
-          ? 'strict'
-          : 'lax';
+    let sameSite: SameSiteOption;
+    let secure: boolean;
+
+    if (sameSiteEnv !== undefined && sameSiteEnv !== null && sameSiteEnv !== '') {
+      const sameSiteLower = sameSiteEnv.toLowerCase();
+      sameSite = sameSiteLower === 'none' ? 'none' 
+        : sameSiteLower === 'strict' ? 'strict' 
+        : 'lax';
+    } else {
+      sameSite = isProduction ? 'none' : 'lax';
+    }
+
+    if (secureEnv !== undefined && secureEnv !== null && secureEnv !== '') {
+      secure = secureEnv.toLowerCase() === 'true';
+    } else {
+      secure = sameSite === 'none' || isProduction;
+    }
 
     const effectiveSameSite: SameSiteOption = partitionedEnv ? 'none' : sameSite;
-    const effectiveSecure =
-      partitionedEnv || effectiveSameSite === 'none' ? true : secureEnv;
+    const effectiveSecure = partitionedEnv || effectiveSameSite === 'none' ? true : secure;
 
     return {
       httpOnly: true,

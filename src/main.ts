@@ -14,14 +14,31 @@ async function bootstrap() {
   app.use(cookieParser());
 
   const corsOrigin = configService.get<string>('CORS_ORIGIN', '');
-  const origins = corsOrigin
+  const allowedOrigins = corsOrigin
     .split(',')
     .map((origin) => origin.trim())
     .filter(Boolean);
 
   app.enableCors({
-    origin: origins.length ? origins : false,
+    origin: (origin, callback) => {
+      if (!origin) {
+        return callback(null, true);
+      }
+      
+      if (allowedOrigins.includes(origin)) {
+        return callback(null, true);
+      }
+      
+      return callback(
+        new Error(`Origin ${origin} not allowed by CORS policy`),
+        false,
+      );
+    },
     credentials: true,
+    methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
+    allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With'],
+    exposedHeaders: ['Set-Cookie'],
+    maxAge: 86400,
   });
 
   app.useGlobalPipes(
