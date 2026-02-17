@@ -65,7 +65,7 @@ Ownership is enforced via JWT guard.
 Create a `.env` file using the following template:
 
 ```env
-PORT=3000
+PORT=3001
 MONGODB_URI=mongodb+srv://<username>:<password>@<cluster>.mongodb.net/<database-name>?retryWrites=true&w=majority
 
 JWT_ACCESS_SECRET=your_access_token_secret_here
@@ -110,7 +110,7 @@ npm run start:dev
 
 Server runs on:
 ```
-http://localhost:3000
+http://localhost:3001
 ```
 
 ## Deployment
