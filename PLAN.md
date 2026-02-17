@@ -1,36 +1,96 @@
 # PLAN.md — Task Management System (Next.js + NestJS)
 
-## Backend choice
-I’m choosing **NestJS** because it gives a clean, scalable structure out of the box (modules, guards, validation pipes), strong **TypeScript** patterns, and makes it easy to implement security requirements like **JWT validation, rate limiting, and input validation** in a consistent way. It’s also easier to explain and maintain during a code review than a “single file” Express setup.
+## Backend Choice
 
-## High-level architecture
-- **Frontend:** Next.js
-  - Pages: Register, Login, Dashboard (tasks list), Create/Edit task form
-  - Handles loading + error states, form validation UX, and basic accessibility
-  - Route protection using Next middleware + server-side checks where needed
-- **Backend:** NestJS REST API
-  - Auth: `/auth/register`, `/auth/login`, `/auth/refresh`
-  - Tasks: `/tasks` CRUD (only the owner can access/modify)
-- **Data storage**
-  - The assessment doesn’t mention a DB, but a task system needs persistence.
-  - I’ll use **MongoDB Atlas** for fast setup and simple deployment.
-  - Collections: `users` and `tasks` (each task has an `ownerId`).
+I chose NestJS because it provides a clean, scalable architecture using modules, guards, interceptors, and validation pipes. It enforces strong TypeScript patterns and makes it easier to implement structured security mechanisms such as JWT authentication, rate limiting, and DTO validation in a maintainable way. This improves long-term scalability and code readability during review.
 
-## Security considerations (what I will actively protect)
+---
+
+## High-Level Architecture
+
+### Frontend – Next.js
+
+- Pages:
+  - Register
+  - Login
+  - Dashboard (task list)
+  - Create/Edit task form
+- Handles loading & error states
+- Client-side form validation and accessibility basics
+- Route protection via Next.js middleware
+- Authentication via HttpOnly cookies
+
+---
+
+### Backend – NestJS REST API
+
+#### Auth
+
+- `POST /auth/register`
+- `POST /auth/login`
+- `POST /auth/refresh`
+
+#### Tasks
+
+- `GET /tasks`
+- `POST /tasks`
+- `PUT /tasks/:id`
+- `DELETE /tasks/:id`
+
+- Authorization enforced via JWT Guard
+
+---
+
+## Data Storage
+
+**MongoDB Atlas**
+
+### Collections
+
+- `users`
+- `tasks` (includes `ownerId` reference)
+
+- Indexed `ownerId` field for efficient filtering
+
+---
+
+## Request Flow
+
+1. User logs in → credentials validated → backend issues access & refresh tokens.
+2. Tokens stored in HttpOnly cookies.
+3. Protected routes use JWT guard for validation.
+4. All task queries are filtered using `ownerId` from JWT payload.
+5. Ownership is verified for update/delete operations.
+
+---
+
+## Security Considerations
+
 ### Client (Next.js)
-- **XSS prevention:** avoid `dangerouslySetInnerHTML`, escape output by default, validate inputs.
-- **Secure auth storage:** store tokens in **HttpOnly cookies** (not localStorage).
-- **CSRF protection:** use **SameSite cookies** and a CSRF token (double-submit) for POST/PUT/DELETE if needed.
-- **CSP:** add a basic **Content-Security-Policy** header to reduce XSS risk.
-- **Route protection:** redirect unauthenticated users away from dashboard/task pages.
+
+- Avoid `dangerouslySetInnerHTML` (XSS prevention)
+- Tokens stored in HttpOnly cookies (not `localStorage`)
+- SameSite cookies + CSRF protection for state-changing requests
+- Basic Content Security Policy (CSP)
+- Route redirection for unauthenticated users
+
+---
 
 ### Server (NestJS)
-- **Password hashing:** bcrypt/argon2 on registration.
-- **Rate limiting:** throttle login endpoint to slow brute force attacks.
-- **Validation & sanitization:** DTO validation (`class-validator`) + whitelist to block extra fields.
-- **JWT/session validation:** verify access token on every protected route; refresh route issues new access token.
-- **Authorization:** enforce ownership (`task.ownerId === user.id`) for read/update/delete.
-- **Safe error handling:** consistent errors, no stack traces or internal leaks in responses.
 
-## Optional novelty feature
-Add **task filters + sorting** (e.g., status and due date) with query params (`GET /tasks?status=...`) and a small UI filter on the dashboard—useful, realistic, and doesn’t risk the core requirements.
+- Password hashing (`bcrypt` / `argon2`)
+- Rate limiting on login
+- DTO validation + whitelist mode to block extra fields
+- JWT validation on protected routes
+- Ownership enforcement (`task.ownerId === user.id`)
+- Safe error responses (no stack trace leaks)
+
+---
+
+## Scaling Considerations
+
+- Stateless JWT allows horizontal scaling
+- Database indexing on `ownerId`
+- Redis could be added for rate limiting or refresh token storage
+- API can be containerized (Docker) for cloud deployment
+- Logging & monitoring can be added for production readiness
